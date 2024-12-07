@@ -31,10 +31,10 @@ if "saledate" in df.columns:
     print("Transformed 'saledate' to year-month format.")
 
 # Handle outliers for the target feature (House to Lot Ratio)
-def remove_outliers_using_iqr(df, column, p):
+def remove_outliers_using_iqr(df, column, b, t):
     """Removes outliers in the top and bottom 5% based on IQR."""
-    Q1 = df[column].quantile(p)  # Bottom 5% quantile
-    Q3 = df[column].quantile(1 - p)  # Top 5% quantile
+    Q1 = df[column].quantile(b)  # Bottom 5% quantile
+    Q3 = df[column].quantile(1 - t)  # Top 5% quantile
     IQR = Q3 - Q1
     lower_bound = Q1 - 1.5 * IQR
     upper_bound = Q3 + 1.5 * IQR
@@ -44,7 +44,7 @@ def remove_outliers_using_iqr(df, column, p):
 target_feature = "House to Lot Ratio"
 if target_feature in df.columns:
     original_size = len(df)
-    df = remove_outliers_using_iqr(df, target_feature, 0.2)
+    df = remove_outliers_using_iqr(df, target_feature, 0.1, 0.3)
     removed_records = original_size - len(df)
     print(f"Outlier removal: {removed_records} records removed from '{target_feature}'.")
 
@@ -53,28 +53,28 @@ if "Acres" in df.columns:
     # df = df[df["Acres"] <= 1]
     # removed_records = original_size - len(df)
     # Drop all records with Acres > 1
-    df = remove_outliers_using_iqr(df, 'Acres', 0.1)
+    df = remove_outliers_using_iqr(df, 'Acres', 0.05, 0.1)
     print(f"Records with 'Acres' outside of IQR were removed: {removed_records}")
 
 if "VDL Sale Price" in df.columns:
     # original_size = len(df)
     # df = df[df["VDL Sale Price"] <= 1_000_000]
     # removed_records = original_size - len(df)
-    df = remove_outliers_using_iqr(df, 'VDL Sale Price', 0.1)
+    df = remove_outliers_using_iqr(df, 'VDL Sale Price', 0.05, 0.1)
     print(f"Records with 'VDL Sale Price' outside of IQR were removed: {removed_records}")
 
 if "Longitude" in df.columns:
     # original_size = len(df)
     # df = df[df["VDL Sale Price"] <= 1_000_000]
     # removed_records = original_size - len(df)
-    df = remove_outliers_using_iqr(df, 'Longitude', 0.05)
+    df = remove_outliers_using_iqr(df, 'Longitude', 0.05, 0.05)
     print(f"Records with 'Longitude' outside of IQR were removed: {removed_records}")
 
 if "Latitude" in df.columns:
     # original_size = len(df)
     # df = df[df["VDL Sale Price"] <= 1_000_000]
     # removed_records = original_size - len(df)
-    df = remove_outliers_using_iqr(df, 'Latitude', 0.05)
+    df = remove_outliers_using_iqr(df, 'Latitude', 0.05, 0.05)
     print(f"Records with 'Latitude' outside of IQR were removed: {removed_records}")
 
 # Save the updated dataset

@@ -1,0 +1,569 @@
+\section{Model Architecture (Code Summary)}
+
+\subsection{\texttt{MeckArcGISSales.csv}}
+
+The data used in this analysis was obtained from Mecklenburg County’s Open Mapping platform, specifically the \textit{Parcel Sales} dataset (\url{https://maps.mecknc.gov/openmapping/data.html}). This dataset provides tabular sales data for Mecklenburg County, NC, maintained by the Mecklenburg County Tax Assessor’s Office. It contains over 1,000,000 records and includes fields such as \texttt{parcelid}, \texttt{transferid}, \texttt{saleprice}, \texttt{saledate}, and other attributes describing the properties and transactions. The data encompasses sales spanning multiple years and is regularly updated to support resource management decisions via Geographic Information Systems (GIS). 
+
+The dataset serves as a critical input for this project, as it captures the underlying spatial and transactional patterns necessary for predictive modeling. However, it is important to note that the dataset comes with use limitations. Mecklenburg County explicitly disclaims any warranties regarding the accuracy or completeness of the information, as it may contain errors or outdated data resulting from collection methods or physical conditions. Despite these constraints, the dataset remains a robust resource for analyzing land transactions and forming the basis of the predictive AI model developed in this report.
+
+\subsection{\texttt{processArcGISSales.py}}
+This script, \texttt{processArcGISSales.py}, preprocesses municipal sales data extracted from ArcGIS to prepare it for predictive modeling. The script is designed to handle large datasets efficiently by processing the data in chunks of 10,000 rows, which helps manage memory usage. The preprocessing begins with data cleaning, where rows with missing values in critical fields (\texttt{transferid} and \texttt{parcelid}) are removed, and transactions with a \texttt{saleprice} of zero are filtered out. Two new features are engineered during this step: \texttt{Acres}, which converts land area from square feet to acres, and a placeholder column, \texttt{VDL Sale Price}. For each unique \texttt{transferid}, the script computes the average \texttt{saleprice} per transaction and populates the \texttt{VDL Sale Price} column.
+
+After processing, the cleaned and augmented data chunks are saved to an intermediate file, which is subsequently read back for sorting. The dataset is sorted by \texttt{saledate} (standardized to a consistent datetime format) and \texttt{transferid}, and the sorted data is saved to the final output file, \texttt{Mod\_MeckArcGISSales\_Sorted.csv}. Additionally, the script identifies and isolates records where a \texttt{transferid} is associated with multiple transactions. These records are further cleaned by removing unnecessary columns and are saved to a separate file, \texttt{TransferID\_MeckArcGISSales.csv}.
+
+Finally, the script deletes the intermediate file to optimize storage usage. By performing comprehensive cleaning, feature engineering, and efficient sorting, this script ensures that raw municipal data is well-prepared for downstream analytical and predictive tasks.
+
+\subsection{\texttt{1\_findFinishedHomeValue.py}}
+
+The script \texttt{1\_findFinishedHomeValue.py} focuses on enriching the processed municipal sales data by retrieving unique addresses associated with each parcel ID. This step bridges the gap between parcel identifiers and their corresponding property locations, enabling deeper analysis of property attributes. Using the ArcGIS REST API, the script queries addresses for each parcel ID in the dataset. The API request fetches data from the \texttt{CLTEx\_MoreInfo} service, ensuring accurate mapping of parcel IDs to their respective addresses. Any duplicates in the returned addresses are removed to maintain a clean list of unique locations.
+
+To handle large datasets efficiently, the script processes the data in chunks of 10 records at a time. A log file mechanism is implemented to keep track of already processed parcel IDs, preventing redundant API calls and optimizing runtime. The retrieved addresses are stored in a new column, \texttt{Addresses}, within the dataset. The script writes progress incrementally to an output CSV file, \texttt{TransferID\_with\_Home\_Value.csv}, ensuring data persistence throughout the process.
+
+This step is essential for linking parcel data to specific property addresses, enriching the dataset for downstream tasks such as predictive modeling and spatial analysis. By combining the cleaned municipal sales data with address information, the enriched dataset enables more detailed exploration of the relationships between property attributes and transaction values.
+
+\subsection{\texttt{2\_findHomeToLotRatio.py}}
+
+The script \texttt{2\_findHomeToLotRatio.py} calculates the ratio of finished home value to lot price, a key metric for analyzing the relationship between property development costs and potential market value. Starting with the enriched dataset \texttt{TransferID\_with\_Home\_Value.csv}, the script removes records with missing \texttt{Home Transfer ID}, ensuring the integrity of the calculations. The \texttt{Home Transfer ID} is standardized by rounding and converting it to a string format for consistency.
+
+Next, the script calculates the count of transactions for each unique \texttt{Home Transfer ID} and adjusts the \texttt{Finished Home Value} by dividing it by the corresponding transaction count. This adjusted value accounts for multiple transactions under the same \texttt{Home Transfer ID}, providing a normalized representation of the finished home value.
+
+The core computation of this step involves calculating the \texttt{House to Lot Ratio}, defined as the ratio of the adjusted finished home value to the \texttt{VDL Sale Price}. To ensure meaningful results, this calculation is performed only for records with a non-zero \texttt{VDL Sale Price}. The resulting ratio is rounded to three decimal places for precision and stored in a new column, \texttt{House to Lot Ratio}.
+
+Finally, the modified dataset is saved to the output file \texttt{TransferID\_with\_Ratio.csv}, which now includes both the adjusted finished home value and the house-to-lot ratio. This step enhances the dataset’s utility for predictive modeling by incorporating a key feature that directly relates finished home values to lot prices.
+
+\subsection{\texttt{3\_queryRecordAddress.py}}
+
+The script \texttt{3\_queryRecordAddress.py} enhances the dataset by associating parcel IDs with geocoded addresses, including their latitude and longitude coordinates. Using a combination of the ArcGIS REST API and the Google Geocoding API, this step bridges the gap between parcel-level data and geographic coordinates, enabling spatial analysis and location-based modeling.
+
+For each parcel ID in the input file \texttt{TransferID\_with\_Ratio.csv}, the script first queries the ArcGIS REST API to fetch the primary address associated with the parcel. If a valid address is found, it is then geocoded using the Google Geocoding API to obtain latitude and longitude coordinates. This geocoding process ensures accurate spatial placement of parcels for downstream analysis.
+
+The script processes the dataset in chunks of 10 records to maintain memory efficiency and logs progress by appending results incrementally to the output file \texttt{Addresses\_with\_Ratio.csv}. Previously processed parcel IDs are skipped by comparing against an existing output file, preventing redundant API calls. Columns for \texttt{Address}, \texttt{Latitude}, and \texttt{Longitude} are dynamically added to the dataset if not already present.
+
+This step is crucial for transforming raw parcel data into geospatially enriched records, facilitating the integration of geographic coordinates into the predictive modeling pipeline. By providing precise location data, the enriched dataset supports advanced analyses such as mapping, clustering, and proximity-based predictions.
+
+\subsection{\texttt{4\_addFeatures.py}}
+
+The script \texttt{4\_addFeatures.py} augments the dataset by integrating additional features and applying domain-specific filtering to refine the data for modeling. It begins by loading two input datasets: \texttt{Addresses\_with\_Ratio.csv}, containing enriched parcel data with geocoded addresses, and \texttt{Mod\_MeckArcGISSales\_Sorted.csv}, which provides additional land use information. The datasets are merged on the \texttt{parcelid} and \texttt{transferid} columns using a left join to ensure all records from the primary dataset are retained.
+
+A domain-specific filtering step leverages a dictionary of \texttt{landuseful} categories to classify land use types as either \textit{keep} or \textit{drop}. Only parcels with \textit{keep} land use types are retained in the dataset, ensuring the data aligns with the intended scope of residential and multi-family properties. Additionally, the script removes grantee records that appear only once in the dataset, further refining the data to focus on recurring entities that may have more predictive relevance.
+
+The processed dataset is saved as \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv}, now enriched with land use details and filtered for quality. This step is critical for preparing a high-quality dataset tailored to the analysis of finished housing prices relative to lot prices, while focusing on relevant property categories and excluding outliers.
+
+\subsection{\texttt{4.12\_sortStandardizedGranteeMap.py}}
+
+The script \texttt{4.12\_sortStandardizedGranteeMap.py} focuses on standardizing grantee names in the dataset to improve data consistency and usability. It begins by loading the input file \texttt{Addresses\_with\_Standardized\_Grantees.csv}, which contains columns for \texttt{Original\_Grantee} and \texttt{Standardized\_Grantee}. The script verifies that these required columns exist and exits with an error message if they are missing.
+
+The script iterates through each record, prompting the user to decide whether the \texttt{Original\_Grantee} value should be copied to the \texttt{Standardized\_Grantee} field. If the \texttt{Standardized\_Grantee} field is already filled, the record is skipped. For each update, the script allows the user to confirm or deny copying the original value. Upon confirmation, the \texttt{Standardized\_Grantee} field is updated, and the changes are immediately saved to the CSV file. This approach ensures incremental saving and prevents data loss in the event of an interruption.
+
+This step is essential for ensuring consistency in grantee naming conventions, particularly when grantee names appear in varying formats across records. The standardized grantee names contribute to a cleaner dataset, facilitating more accurate analyses and modeling in subsequent steps.
+
+\subsection{\texttt{4.23\_addStandardizedGranteeNames.py}}
+
+The script \texttt{4.23\_addStandardizedGranteeNames.py} integrates standardized grantee names into the dataset, enhancing consistency and usability for further analysis. It begins by loading two input files: \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv}, which contains enriched property data, and \texttt{Addresses\_with\_Standardized\_Grantees.csv}, which provides a mapping of \texttt{Original\_Grantee} to \texttt{Standardized\_Grantee}. Both files are validated to ensure the presence of required columns.
+
+Using the grantee mapping file, a dictionary is created to map original grantee names to their standardized equivalents. This mapping is then applied to the \texttt{grantee} column in the property dataset, creating a new column, \texttt{Mapped\_Grantee}, that contains the standardized names. This step ensures that variations in grantee naming conventions across records are resolved, improving the dataset's consistency.
+
+The updated dataset is saved to the output file \texttt{Addresses\_with\_Mapped\_Grantees.csv}. By incorporating standardized grantee names, this step facilitates cleaner and more reliable analyses in subsequent phases of the project, particularly for tasks that involve grantee-specific grouping or trends.
+
+\subsection{\texttt{4.24\_transformData.py}}
+
+The script \texttt{4.24\_transformData.py} performs final transformations and cleaning on the dataset to prepare it for analysis and modeling. The input file \texttt{Addresses\_with\_Mapped\_Grantees.csv} is loaded, and several columns deemed unnecessary for further analysis are dropped, including \texttt{Home Transfer ID}, \texttt{Finished Home Value}, and \texttt{Address}. The script then handles missing values by removing records with null entries in critical fields such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, \texttt{landuseful}, \texttt{Mapped Grantee}, \texttt{naldesc}, and \texttt{Adjusted Finished Home Value}.
+
+The \texttt{saledate} column is transformed into a year-month format (\texttt{YYYY-MM}) to simplify temporal analyses. Outliers are addressed using the interquartile range (IQR) method, targeting critical features such as \texttt{House to Lot Ratio}, \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, and \texttt{Longitude}. For each feature, values outside the defined IQR thresholds are removed to reduce noise and improve dataset reliability. 
+
+The cleaned and transformed dataset is saved to \texttt{Addresses\_with\_Mapped\_Grantees\_Cleaned.csv}. By removing irrelevant columns, addressing missing values, and handling outliers, this script ensures the dataset is optimized for downstream modeling tasks and predictive analysis.
+
+\subsection{\texttt{4.25\_findBestIQRGrid.py}}
+
+The script \texttt{4.25\_findBestIQRGrid.py} conducts a grid search to identify the optimal interquartile range (IQR) parameters for outlier removal, aiming to enhance the predictive performance of the dataset. Using combinations of IQR thresholds for key features (\texttt{House to Lot Ratio}, \texttt{Acres}, and \texttt{VDL Sale Price}), the script evaluates the effects of varying bottom and top quantile thresholds on model performance.
+
+The process begins by loading and preprocessing the input dataset \texttt{Addresses\_with\_Mapped\_Grantees.csv}. Features such as \texttt{saledate} are transformed into numeric representations for temporal analysis, and missing values are addressed to ensure data integrity. For each combination of IQR thresholds, the script removes outliers, ensuring that the resulting dataset retains a sufficient number of records for model training and evaluation.
+
+A machine learning pipeline is built using the \texttt{XGBRegressor} algorithm, with preprocessing handled by a \texttt{ColumnTransformer}. Numeric features are passed through directly, while categorical features are encoded using one-hot encoding. The pipeline is trained and evaluated on a train-test split, with model performance assessed using \texttt{R\textsuperscript{2}} and mean squared error (MSE) metrics on the test set.
+
+Results for each IQR configuration, including the number of records used and the corresponding performance metrics, are recorded in \texttt{IQR\_Grid\_Search\_Results.csv}. The grid search iteratively appends results to the file, ensuring data persistence and allowing for real-time analysis of performance trends.
+
+The script identifies and prints the optimal IQR parameters that maximize the \texttt{R\textsuperscript{2}} score. This step ensures that the dataset is optimally prepared for predictive modeling by balancing outlier removal with the preservation of valuable data records. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{2\_regressionModel.py}}
+
+The script \texttt{2\_regressionModel.py} implements a regression model using a linear regression approach to predict the \texttt{House to Lot Ratio}. The dataset \texttt{Addresses\_with\_Ratio.csv} is preprocessed by handling missing values and removing outliers in key columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, and \texttt{Latitude}) using the interquartile range (IQR) method. Temporal data from the \texttt{saledate} column is transformed into a numeric feature, \texttt{sale\_year}, to incorporate temporal effects into the model.
+
+The model uses features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Finished Home Value}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year}. These features are preprocessed using a \texttt{ColumnTransformer}, and a pipeline is constructed to streamline preprocessing and model training. The dataset is split into training and testing subsets to evaluate the model. Performance is measured using metrics like mean squared error (MSE) and \texttt{R\textsuperscript{2}} on both the training and test sets. Additionally, a scatter plot of predicted versus actual values is generated and saved to \texttt{Models/Outputs/predicted\_vs\_actual.png}, providing a visual assessment of the model's performance.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Simplicity:} The pipeline integrates preprocessing and model training seamlessly, reducing complexity and potential errors.
+    \item \textbf{Efficiency:} Linear regression is computationally inexpensive, making it suitable for initial exploration of the dataset.
+    \item \textbf{Feature Engineering:} Incorporating temporal information (\texttt{sale\_year}) and removing outliers improve data quality.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Limited Flexibility:} Linear regression assumes linear relationships, which may not capture complex patterns in the data.
+    \item \textbf{Outlier Sensitivity:} Despite IQR-based handling, linear regression remains sensitive to outliers, potentially skewing results.
+    \item \textbf{Underfitting Risk:} The model may underfit the data due to its simplicity, especially for non-linear relationships.
+    \item \textbf{Feature Utilization:} The model does not include categorical features such as \texttt{naldesc}, limiting the use of all available data.
+\end{itemize}
+
+This script establishes a baseline model for comparison with more advanced architectures, highlighting areas for improvement in capturing non-linear relationships and utilizing categorical features. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{2.1\_regressionModel\_regularization.py}}
+
+The script \texttt{2.1\_regressionModel\_regularization.py} extends the baseline linear regression model by incorporating regularization techniques, specifically Ridge and Lasso regression. The dataset \texttt{Addresses\_with\_Ratio.csv} undergoes preprocessing, including the handling of missing values and outlier removal using the interquartile range (IQR) method. Temporal data from the \texttt{saledate} column is transformed into a numeric feature, \texttt{sale\_year}, to incorporate temporal effects.
+
+Ridge regression applies \(\ell_2\)-norm regularization to penalize large coefficient magnitudes, while Lasso regression employs \(\ell_1\)-norm regularization, which can lead to feature selection by driving some coefficients to zero. Both models are trained using features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Finished Home Value}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year}. Preprocessing is achieved through a \texttt{ColumnTransformer} that standardizes numeric features using \texttt{StandardScaler}.
+
+The models are evaluated using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics on both training and test sets. Separate scatter plots of predicted versus actual values are generated for Ridge and Lasso regression models, visually assessing their performance against the ideal fit line (\(y = x\)). These plots are saved as \texttt{ridge\_predicted\_vs\_actual.png} and \texttt{lasso\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Improved Generalization:} Regularization helps prevent overfitting, particularly in Ridge regression, by constraining the magnitude of coefficients.
+    \item \textbf{Feature Selection:} Lasso regression inherently performs feature selection by setting less important feature coefficients to zero.
+    \item \textbf{Scalability:} The inclusion of \texttt{StandardScaler} ensures that features are on a comparable scale, improving model convergence.
+    \item \textbf{Comparison of Regularization Techniques:} Side-by-side evaluation of Ridge and Lasso provides insight into the suitability of each approach for the dataset.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Model Complexity:} Regularization introduces hyperparameters (\(\alpha\)) that require tuning for optimal performance.
+    \item \textbf{Potential Underfitting:} Excessive regularization may lead to underfitting, particularly if \(\alpha\) is too large in Ridge regression.
+    \item \textbf{Lasso Limitations:} Lasso may struggle in datasets with multicollinearity, where highly correlated features can produce inconsistent coefficient selection.
+    \item \textbf{Assumption of Linearity:} Despite regularization, the models still assume a linear relationship between features and the target, which may limit performance on complex datasets.
+\end{itemize}
+
+This script represents an incremental improvement over the baseline model by reducing overfitting and introducing a mechanism for feature selection. However, further optimization, such as hyperparameter tuning and exploration of non-linear models, may be necessary for complex relationships in the data. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{2.2\_regressionModel\_randomForest.py}}
+
+The script \texttt{2.2\_regressionModel\_randomForest.py} utilizes a Random Forest regression model to predict the \texttt{House to Lot Ratio}, introducing a non-linear approach to model the relationships between features and the target variable. The dataset \texttt{Addresses\_with\_Ratio.csv} is preprocessed to handle missing values and remove outliers in key columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, and \texttt{Latitude}) using the interquartile range (IQR) method. Temporal data from the \texttt{saledate} column is transformed into a numeric feature, \texttt{sale\_year}.
+
+The model uses features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Finished Home Value}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year}, with numeric features standardized using a \texttt{ColumnTransformer}. A Random Forest model, configured with 100 estimators and a maximum depth of 10, is built into a pipeline for seamless integration with the preprocessing step. The dataset is split into training and testing subsets for evaluation.
+
+The model's performance is assessed using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics on both the training and test sets. A scatter plot comparing predicted versus actual values is generated, providing a visual assessment of the model’s accuracy. The plot is saved as \texttt{rf\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Captures Non-Linear Relationships:} Random Forest can model complex patterns and interactions between features, improving predictive performance on non-linear datasets.
+    \item \textbf{Feature Importance:} The model inherently ranks feature importance, offering insights into the most influential variables.
+    \item \textbf{Robust to Outliers:} Random Forest is less sensitive to outliers compared to linear models.
+    \item \textbf{Scalable:} The approach is effective on large datasets with diverse feature sets.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Overfitting Risk:} While the maximum depth of 10 mitigates this risk, Random Forest can overfit on small or imbalanced datasets.
+    \item \textbf{Interpretability:} The model is more challenging to interpret compared to linear regression models due to its ensemble nature.
+    \item \textbf{Hyperparameter Tuning:} Model performance depends on parameters such as the number of estimators and tree depth, which require optimization.
+    \item \textbf{Computational Cost:} Training and prediction times are higher than simpler models, especially as dataset size or model complexity increases.
+\end{itemize}
+
+This script demonstrates a significant advancement by leveraging Random Forest regression to handle non-linear relationships and feature interactions, providing a robust and flexible modeling framework. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{2.3\_regressionModel\_xgboost.py}}
+
+The script \texttt{2.3\_regressionModel\_xgboost.py} employs the XGBoost regression algorithm to predict the \texttt{House to Lot Ratio}, introducing a gradient boosting approach for handling complex relationships in the data. The dataset \texttt{Addresses\_with\_Ratio.csv} undergoes preprocessing, including the handling of missing values and outlier removal in key columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, and \texttt{Latitude}) using the interquartile range (IQR) method. Temporal data from the \texttt{saledate} column is transformed into a numeric feature, \texttt{sale\_year}.
+
+The model uses features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Finished Home Value}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year}, with numeric features standardized using a \texttt{ColumnTransformer}. The XGBoost model is configured with hyperparameters including \texttt{n\_estimators}=100, \texttt{max\_depth}=6, \texttt{learning\_rate}=0.1, \texttt{subsample}=0.8, and \texttt{colsample\_bytree}=0.8, which control the number of trees, tree depth, learning rate, and sampling proportions for features and rows.
+
+The model's performance is evaluated using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics on both the training and test sets. A scatter plot comparing predicted versus actual values is generated to visually assess the model’s accuracy. This plot is saved as \texttt{xgb\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Powerful Non-Linear Modeling:} XGBoost excels at capturing complex patterns and interactions between features, improving predictive accuracy.
+    \item \textbf{Feature Importance Insights:} The model provides feature importance metrics, offering valuable insights into the most influential variables.
+    \item \textbf{Efficient Handling of Missing Values:} XGBoost can handle missing values directly, simplifying preprocessing.
+    \item \textbf{Regularization:} Built-in regularization (\(\ell_1\) and \(\ell_2\)) reduces the risk of overfitting.
+    \item \textbf{Scalability:} The algorithm is optimized for speed and scalability, making it suitable for large datasets.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Hyperparameter Tuning Complexity:} Optimal performance requires careful tuning of multiple hyperparameters, which can be computationally intensive.
+    \item \textbf{Interpretability:} The complexity of the ensemble model reduces interpretability compared to simpler models.
+    \item \textbf{Potential Overfitting:} Without proper tuning, XGBoost may overfit, especially on small or noisy datasets.
+    \item \textbf{Computational Cost:} The algorithm is more resource-intensive compared to simpler models, particularly during hyperparameter optimization.
+\end{itemize}
+
+This script represents a significant advancement in predictive modeling, leveraging the strength of gradient boosting to handle non-linear relationships and feature interactions effectively. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{2.31\_regressionModel\_xgboost\_hypTuning.py}}
+
+The script \texttt{2.31\_regressionModel\_xgboost\_hypTuning.py} enhances the XGBoost regression approach by introducing hyperparameter tuning through grid search. This model predicts the \texttt{House to Lot Ratio} using optimized configurations for XGBoost, aiming to improve model performance through systematic exploration of hyperparameter combinations. The dataset \texttt{Addresses\_with\_Ratio.csv} is preprocessed to handle missing values, remove outliers in key columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, and \texttt{Latitude}) using the interquartile range (IQR) method, and extract temporal features (\texttt{sale\_year}) from the \texttt{saledate} column.
+
+The features used include \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Finished Home Value}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year}. These are standardized using a \texttt{ColumnTransformer}. A pipeline integrates preprocessing and the XGBoost regressor, ensuring seamless model construction and training. Hyperparameters such as \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, and \texttt{colsample\_bytree} are tuned via a grid search with 5-fold cross-validation, optimizing for the highest \texttt{R\textsuperscript{2}} score.
+
+The optimal hyperparameters identified through grid search are applied to evaluate the model on the test set. Performance is measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics. A scatter plot of predicted versus actual values is generated, assessing the model’s accuracy with the best parameters. This plot is saved as \texttt{xgb\_best\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Improved Model Performance:} Hyperparameter tuning ensures optimal configuration for the dataset, enhancing predictive accuracy.
+    \item \textbf{Comprehensive Evaluation:} Cross-validation ensures robustness of the selected parameters across different data splits.
+    \item \textbf{Advanced Non-Linear Modeling:} XGBoost captures complex interactions and non-linear relationships effectively.
+    \item \textbf{Efficient Resource Utilization:} Parallelized computations during grid search reduce runtime.
+    \item \textbf{Visualization of Performance:} The scatter plot provides an intuitive assessment of model accuracy.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Computationally Intensive:} Grid search with multiple hyperparameters can be resource-intensive and time-consuming.
+    \item \textbf{Complexity in Parameter Tuning:} Managing and interpreting the results of high-dimensional parameter grids can be challenging.
+    \item \textbf{Risk of Overfitting:} Extensive tuning may inadvertently overfit the model to the training data, though cross-validation mitigates this risk.
+    \item \textbf{Reduced Interpretability:} The complexity of the XGBoost model and its tuned hyperparameters make it less interpretable than simpler models.
+\end{itemize}
+
+This model represents a highly optimized version of XGBoost, demonstrating the benefits of hyperparameter tuning while balancing computational trade-offs for improved predictive performance. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{3\_regressionModel\_newFeatures\_xgboost\_hypTuning.py}}
+
+The script \texttt{3\_regressionModel\_newFeatures\_xgboost\_hypTuning.py} extends the XGBoost regression model by incorporating additional categorical features and refining hyperparameter tuning for improved predictive accuracy. The dataset \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv} is preprocessed to handle missing values, remove outliers in critical columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, \texttt{Latitude}) using the interquartile range (IQR) method, and extract temporal features (\texttt{sale\_year}) from the \texttt{saledate} column.
+
+The model uses features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, \texttt{sale\_year}, and the categorical feature \texttt{landuseful}. The numerical features are passed directly, while the categorical feature is encoded using \texttt{OneHotEncoder}. These preprocessing steps are integrated into a pipeline along with the XGBoost regressor to streamline model training and evaluation. 
+
+Hyperparameter tuning is performed using \texttt{GridSearchCV}, testing combinations of key parameters such as \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, and \texttt{colsample\_bytree}. Five-fold cross-validation is employed to ensure robust parameter selection, optimizing for the highest \texttt{R\textsuperscript{2}} score. The best configuration is then used to evaluate the model on the test set, with performance measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics.
+
+A scatter plot comparing predicted versus actual values is generated, providing a visual representation of the model's accuracy with the tuned parameters. The plot is saved as \texttt{xgboost\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Improved Feature Utilization:} The inclusion of the categorical feature \texttt{landuseful} enhances the model's ability to capture diverse patterns in the data.
+    \item \textbf{Hyperparameter Optimization:} Grid search ensures the selection of optimal model parameters, improving predictive accuracy.
+    \item \textbf{Advanced Non-Linear Modeling:} XGBoost effectively handles complex feature interactions and non-linear relationships.
+    \item \textbf{Comprehensive Evaluation:} Cross-validation provides robust parameter validation across multiple data splits.
+    \item \textbf{Efficient Feature Encoding:} The integration of \texttt{OneHotEncoder} ensures compatibility with categorical variables.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Computational Overhead:} The addition of categorical features and hyperparameter tuning increases computational complexity.
+    \item \textbf{Reduced Interpretability:} The increased feature space from one-hot encoding and the complexity of the XGBoost model reduce interpretability.
+    \item \textbf{Risk of Overfitting:} Extensive hyperparameter tuning and inclusion of categorical variables may increase the risk of overfitting, though cross-validation mitigates this.
+    \item \textbf{Resource-Intensive:} Grid search for multiple hyperparameters requires significant computational resources and time.
+\end{itemize}
+
+This script represents a comprehensive approach to improving model performance by integrating additional features and leveraging hyperparameter tuning to enhance the predictive capabilities of XGBoost. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{3.1\_regressionModel\_xgboost\_addRegHypTuning.py}}
+
+The script \texttt{3.1\_regressionModel\_xgboost\_addRegHypTuning.py} builds upon the previous XGBoost model by incorporating both \(\ell_1\) (Lasso) and \(\ell_2\) (Ridge) regularization into the hyperparameter tuning process. This model predicts the \texttt{House to Lot Ratio} using optimized configurations of XGBoost, including advanced regularization to further reduce overfitting. The dataset \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv} is preprocessed to handle missing values, remove outliers in critical columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, \texttt{Latitude}) using the interquartile range (IQR) method, and extract temporal features (\texttt{sale\_year}) from the \texttt{saledate} column.
+
+The model leverages features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, \texttt{sale\_year}, and the categorical feature \texttt{landuseful}. A \texttt{ColumnTransformer} standardizes numeric features and applies one-hot encoding to categorical features, ensuring compatibility with the model. Hyperparameter tuning is conducted using \texttt{GridSearchCV}, which evaluates combinations of key parameters such as \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, \texttt{colsample\_bytree}, \texttt{reg\_alpha} (\(\ell_1\)), and \texttt{reg\_lambda} (\(\ell_2\)) with 5-fold cross-validation to optimize for the highest \texttt{R\textsuperscript{2}} score.
+
+The best model identified through grid search is evaluated on the test set, with performance measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics. A scatter plot of predicted versus actual values is generated to visually assess the model’s accuracy with the tuned parameters. This plot is saved as \texttt{3.1xgboost\_predicted\_vs\_actual\_cv5.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Enhanced Overfitting Control:} Incorporating \(\ell_1\) and \(\ell_2\) regularization into hyperparameter tuning provides additional control over model complexity and overfitting.
+    \item \textbf{Comprehensive Feature Utilization:} The inclusion of categorical features and advanced regularization improves the model's ability to capture diverse patterns in the data.
+    \item \textbf{Optimal Model Configuration:} Grid search ensures the selection of the best parameter combinations for the dataset.
+    \item \textbf{Advanced Non-Linear Modeling:} XGBoost captures complex feature interactions and non-linear relationships effectively.
+    \item \textbf{Cross-Validation Robustness:} Five-fold cross-validation ensures reliable parameter validation across data splits.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Computational Complexity:} The addition of regularization parameters and extended hyperparameter tuning increases computational requirements.
+    \item \textbf{Interpretability Challenges:} The complexity of XGBoost and regularization makes the model less interpretable compared to simpler linear models.
+    \item \textbf{Potential Risk of Overfitting:} While regularization mitigates overfitting, improper tuning or excessive parameters could still overfit the training data.
+    \item \textbf{Longer Training Time:} The expanded parameter grid significantly increases training time due to the large number of evaluations required.
+\end{itemize}
+
+This script demonstrates a highly sophisticated approach to predictive modeling, balancing model complexity and generalization through advanced regularization and hyperparameter optimization.\\
+
+\hrulefill
+
+\subsection{Model: \texttt{3.2\_regressionModel\_xgboost\_hyptuning\_dropFeatures.py}}
+
+The script \texttt{3.2\_regressionModel\_xgboost\_hyptuning\_dropFeatures.py} builds on the XGBoost regression model by selectively removing less important features based on domain knowledge and feature importance analysis. The dataset \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv} undergoes preprocessing to handle missing values, remove outliers in critical columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, \texttt{Latitude}) using the interquartile range (IQR) method, and exclude records associated with unimportant \texttt{landuseful} categories. Temporal data from the \texttt{saledate} column is transformed into the numeric feature \texttt{sale\_year}.
+
+The model uses features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, \texttt{sale\_year}, and the filtered categorical feature \texttt{landuseful}. Numeric features are passed through directly, while categorical features are encoded using \texttt{OneHotEncoder}. These preprocessing steps are integrated into a pipeline with the XGBoost regressor for streamlined training and evaluation.
+
+Hyperparameter tuning is conducted via \texttt{GridSearchCV}, evaluating combinations of parameters including \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, \texttt{colsample\_bytree}, \texttt{reg\_alpha} (\(\ell_1\)), and \texttt{reg\_lambda} (\(\ell_2\)) with 3-fold cross-validation. The optimal parameter set is applied to evaluate the model on the test set, with performance measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics.
+
+A scatter plot comparing predicted versus actual values is generated, visually assessing the model's accuracy after feature reduction. This plot is saved as \texttt{xgboost\_predicted\_vs\_actual\_after\_dropping\_features.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Feature Simplification:} Removing less relevant features (\texttt{landuseful} categories) reduces feature space and simplifies the model.
+    \item \textbf{Improved Generalization:} The focus on important features mitigates the risk of overfitting to noise in irrelevant data.
+    \item \textbf{Advanced Regularization:} Incorporation of \(\ell_1\) and \(\ell_2\) regularization further controls overfitting.
+    \item \textbf{Efficient Training:} Reducing feature space decreases computational overhead during model training.
+    \item \textbf{Cross-Validation Robustness:} Hyperparameter tuning with cross-validation ensures robust parameter selection across data splits.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Loss of Potentially Informative Features:} Excluding features deemed less important may result in the loss of subtle patterns in the data.
+    \item \textbf{Risk of Over-Simplification:} Aggressive feature reduction might overly constrain the model, reducing its flexibility.
+    \item \textbf{Interpretability Challenges:} While feature reduction simplifies the model, the remaining features may still interact in complex, non-linear ways, reducing interpretability.
+    \item \textbf{Computational Cost of Tuning:} Hyperparameter tuning with a large parameter grid remains computationally expensive, even with reduced feature space.
+\end{itemize}
+
+This script highlights the importance of feature selection and regularization in building efficient and generalized predictive models while maintaining the flexibility of advanced hyperparameter tuning.\\
+
+\hrulefill
+
+\subsection{Model: \texttt{3.3\_regressionModel\_xgboost\_setParams\_increaseCV.py}}
+
+The script \texttt{3.3\_regressionModel\_xgboost\_setParams\_increaseCV.py} refines the XGBoost regression model by narrowing the hyperparameter grid and increasing cross-validation to enhance the robustness of parameter selection. The dataset \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv} undergoes preprocessing to handle missing values, remove outliers in critical columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, \texttt{Latitude}) using the interquartile range (IQR) method, and exclude records associated with unimportant \texttt{landuseful} categories. Temporal data from the \texttt{saledate} column is transformed into the numeric feature \texttt{sale\_year}.
+
+The model utilizes features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, \texttt{sale\_year}, and the filtered categorical feature \texttt{landuseful}. Numeric features are passed directly, while categorical features are encoded using \texttt{OneHotEncoder}. These preprocessing steps are integrated into a pipeline with the XGBoost regressor for streamlined training and evaluation.
+
+Hyperparameter tuning is conducted via \texttt{GridSearchCV}, focusing on a smaller, refined parameter grid. Parameters such as \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, \texttt{colsample\_bytree}, \texttt{reg\_alpha} (\(\ell_1\)), and \texttt{reg\_lambda} (\(\ell_2\)) are tuned with 5-fold cross-validation to optimize for the highest \texttt{R\textsuperscript{2}} score.
+
+The best configuration is applied to evaluate the model on the test set, with performance measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics. A scatter plot comparing predicted versus actual values is generated to visually assess the model’s accuracy with the tuned parameters. This plot is saved as \texttt{xgboost\_predicted\_vs\_actual\_after\_dropping\_features.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Robust Parameter Selection:} The increased cross-validation folds enhance the reliability of hyperparameter tuning, reducing variance in model evaluation.
+    \item \textbf{Refined Feature Set:} The exclusion of less important \texttt{landuseful} categories simplifies the model and focuses on relevant data patterns.
+    \item \textbf{Advanced Regularization:} Incorporation of \(\ell_1\) and \(\ell_2\) regularization parameters helps manage overfitting effectively.
+    \item \textbf{Efficient Tuning:} A smaller, focused parameter grid reduces computational overhead while maintaining tuning quality.
+    \item \textbf{Improved Generalization:} The balance between feature reduction and advanced regularization supports better generalization to unseen data.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Potential Loss of Informative Features:} Aggressive feature filtering may exclude subtle but informative data patterns.
+    \item \textbf{Interpretability Challenges:} The complex interactions modeled by XGBoost and regularization parameters reduce the ease of interpretation.
+    \item \textbf{Risk of Overfitting to Validation Sets:} Extended cross-validation increases the risk of overfitting to validation splits, although mitigated by careful tuning.
+    \item \textbf{Limited Exploration of Parameters:} The smaller grid restricts the exploration of potentially beneficial configurations outside the pre-defined ranges.
+\end{itemize}
+
+This script demonstrates a highly focused and efficient approach to refining the XGBoost model, balancing computational efficiency and predictive performance through targeted parameter tuning and robust cross-validation. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{3.4\_regressionModel\_xgboost\_landuse3categories.py}}
+
+The script \texttt{3.4\_regressionModel\_xgboost\_landuse3categories.py} focuses on improving the predictive performance of the XGBoost model by mapping detailed land use categories into three broader categories (\texttt{single family}, \texttt{townhomes}, and \texttt{multifamily}). This simplification enhances the model's ability to generalize across the dataset. The dataset \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv} undergoes preprocessing to handle missing values, remove outliers in critical columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, \texttt{Latitude}) using the interquartile range (IQR) method, and reclassify land use features based on a predefined mapping.
+
+Key features such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year} are combined with the simplified land use categories to train the model. Numeric features are processed directly, while the categorical feature \texttt{landuseful} is encoded using \texttt{OneHotEncoder}. These preprocessing steps are integrated into a pipeline with the XGBoost regressor, streamlining model training and evaluation.
+
+Hyperparameter tuning is performed via \texttt{GridSearchCV}, testing combinations of parameters including \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, \texttt{colsample\_bytree}, \texttt{reg\_alpha} (\(\ell_1\)), and \texttt{reg\_lambda} (\(\ell_2\)) with 10-fold cross-validation. The best parameters are used to evaluate the model on the test set, with performance measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics.
+
+A scatter plot comparing predicted versus actual values is generated to visually assess the model’s accuracy with the tuned parameters. This plot is saved as \texttt{xgboost\_predicted\_vs\_actual\_after\_dropping\_features.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Simplified Land Use Categories:} Mapping detailed categories into three broader categories (\texttt{single family}, \texttt{townhomes}, and \texttt{multifamily}) reduces complexity while retaining essential information.
+    \item \textbf{Robust Parameter Tuning:} The use of 10-fold cross-validation ensures reliable hyperparameter optimization and reduces the likelihood of overfitting.
+    \item \textbf{Advanced Regularization:} Incorporation of \(\ell_1\) and \(\ell_2\) regularization parameters enhances the model's ability to generalize to unseen data.
+    \item \textbf{Efficient Training:} Feature simplification reduces computational overhead while maintaining predictive performance.
+    \item \textbf{Improved Interpretability:} Broader land use categories provide a more intuitive understanding of feature contributions.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Loss of Granularity:} Collapsing detailed land use categories into broader groups may obscure nuanced patterns present in the original data.
+    \item \textbf{Computational Cost of Tuning:} Despite the simplified feature set, the use of 10-fold cross-validation increases training time.
+    \item \textbf{Risk of Overgeneralization:} Simplifying categorical data risks losing specific interactions or relationships unique to smaller categories.
+    \item \textbf{Model Complexity:} While simplified, the interactions captured by XGBoost and regularization parameters still make the model challenging to interpret.
+\end{itemize}
+
+This script demonstrates the effectiveness of simplifying categorical data to enhance model generalization while balancing computational efficiency and predictive performance. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{3.5\_regressionModel\_removeCategories.py}}
+
+The script \texttt{3.5\_regressionModel\_removeCategories.py} builds upon previous iterations of the XGBoost regression model by further refining the dataset to exclude land use categories that add noise or complexity to the model. This approach aims to enhance the model's ability to generalize and predict the \texttt{House to Lot Ratio}.
+
+The dataset \texttt{Addresses\_with\_Ratios\_and\_New\_Features.csv} undergoes preprocessing to handle missing values, remove outliers in critical columns (\texttt{House to Lot Ratio}, \texttt{Longitude}, \texttt{Latitude}) using the interquartile range (IQR) method, and exclude irrelevant records based on a simplified list of land use categories. Temporal data from the \texttt{saledate} column is transformed into the numeric feature \texttt{sale\_year}.
+
+Key features, such as \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, and \texttt{sale\_year}, along with the filtered \texttt{landuseful} categories, are utilized in the model. Numeric features are passed through directly, while categorical features are encoded using \texttt{OneHotEncoder}. These preprocessing steps are integrated into a pipeline with the XGBoost regressor, streamlining model training and evaluation.
+
+Hyperparameter tuning is performed using \texttt{GridSearchCV}, exploring combinations of parameters including \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, \texttt{colsample\_bytree}, \texttt{reg\_alpha} (\(\ell_1\)), and \texttt{reg\_lambda} (\(\ell_2\)) with 5-fold cross-validation. The best parameter set is used to evaluate the model, with performance measured using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics.
+
+A scatter plot comparing predicted versus actual values is generated to visually assess the model’s accuracy with the tuned parameters. This plot is saved as \texttt{xgboost\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Focused Dataset:} Removing less relevant land use categories reduces noise, improving the model's performance and generalization.
+    \item \textbf{Streamlined Feature Selection:} The reduced feature set simplifies the model, lowering computational requirements for training.
+    \item \textbf{Advanced Regularization:} Incorporation of \(\ell_1\) and \(\ell_2\) regularization helps manage overfitting, particularly on smaller datasets.
+    \item \textbf{Robust Evaluation:} The use of 5-fold cross-validation ensures that the model is tested thoroughly across different data splits.
+    \item \textbf{Improved Prediction Accuracy:} Simplifying the dataset and optimizing parameters result in better predictive performance on the test set.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Risk of Over-Simplification:} Aggressively removing categories may discard subtle but useful patterns in the data.
+    \item \textbf{Loss of Interpretability:} While the model is simplified, the combination of advanced regularization and feature encoding may reduce transparency in predictions.
+    \item \textbf{Computational Expense:} Although the dataset is smaller, the extensive grid search for hyperparameters remains computationally expensive.
+    \item \textbf{Dependency on Category Mapping:} The effectiveness of this approach relies heavily on the accuracy of the land use category filtering and mapping.
+\end{itemize}
+
+This script demonstrates the benefits of targeted data filtering and parameter optimization in improving the performance and efficiency of predictive models. \\
+
+\hrulefill
+
+\subsection{Model: \texttt{4\_regressionModel\_xgboost\_mappedGrantees.py}}
+
+The script \texttt{4\_regressionModel\_xgboost\_mappedGrantees.py} incorporates \texttt{Mapped\_Grantee} as an additional categorical feature in the predictive model. This feature represents standardized grantee names, which aim to capture latent patterns related to property transactions. The dataset \texttt{Addresses\_with\_Mapped\_Grantees\_Cleaned.csv} is used for this analysis.
+
+The preprocessing steps include converting the \texttt{saledate} column into a numeric representation (\texttt{saledate\_numeric}) based on the number of months since the earliest year in the dataset. This transformation ensures temporal data is appropriately captured for regression. Features include \texttt{Acres}, \texttt{VDL Sale Price}, \texttt{Latitude}, \texttt{Longitude}, \texttt{saledate\_numeric}, \texttt{landuseful}, and \texttt{Mapped\_Grantee}. Numeric features are used directly, while categorical features are encoded using \texttt{OneHotEncoder}.
+
+The XGBoost model is trained using a pipeline structure, which combines preprocessing and regression into a streamlined workflow. Hyperparameter tuning is conducted via \texttt{GridSearchCV}, with a 5-fold cross-validation to explore parameter combinations such as \texttt{n\_estimators}, \texttt{max\_depth}, \texttt{learning\_rate}, \texttt{subsample}, \texttt{colsample\_bytree}, \texttt{reg\_alpha} (\(\ell_1\)), and \texttt{reg\_lambda} (\(\ell_2\)). The model is evaluated using mean squared error (MSE) and \texttt{R\textsuperscript{2}} metrics on training and test datasets.
+
+A scatter plot is created to compare predicted versus actual \texttt{House-to-Lot Ratio}, visually assessing the model’s accuracy. The plot is saved as \texttt{xgboost\_predicted\_vs\_actual.png} in the \texttt{Models/Outputs} directory.
+
+\subsubsection*{Pros and Cons}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item \textbf{Inclusion of Grantee Data:} Adding \texttt{Mapped\_Grantee} captures transaction-specific patterns that may enhance predictive accuracy.
+    \item \textbf{Temporal Encoding:} Transforming \texttt{saledate} into \texttt{saledate\_numeric} provides a continuous representation of time, improving regression capabilities.
+    \item \textbf{Regularization Parameters:} Use of \(\ell_1\) and \(\ell_2\) regularization reduces overfitting risks, especially when dealing with categorical data.
+    \item \textbf{Comprehensive Tuning:} Grid search with 5-fold cross-validation ensures a robust exploration of parameter space.
+    \item \textbf{Interpretable Workflow:} Feature preprocessing and modeling are consolidated in a pipeline, making the process reproducible and modular.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item \textbf{Complexity of Categorical Encoding:} The inclusion of multiple categorical features increases computational cost and model complexity.
+    \item \textbf{Risk of Overfitting:} While regularization mitigates this, the added features, especially \texttt{Mapped\_Grantee}, may still overfit the training data.
+    \item \textbf{Potential Redundancy:} Some grantee mappings might not significantly contribute to the prediction, diluting the model's focus on relevant features.
+    \item \textbf{Time-Consuming Hyperparameter Tuning:} Despite its benefits, grid search adds significant computational overhead.
+\end{itemize}
+
+This model iteration highlights the potential of leveraging standardized grantee data for improved predictive performance while balancing computational and modeling complexities. \\
+
+\hrulefill
+
+\begin{itemize}
+    \item \textbf{Data Acquisition:}
+    \begin{itemize}
+        \item Use the \texttt{MeckArcGISSales.csv} dataset from Mecklenburg County's Open Mapping platform, including fields like \texttt{parcelid}, \texttt{saleprice}, and \texttt{saledate}.
+    \end{itemize}
+
+    \item \textbf{Initial Preprocessing (\texttt{processArcGISSales.py}):}
+    \begin{itemize}
+        \item Clean rows with missing \texttt{parcelid}, \texttt{transferid}, or zero \texttt{saleprice}.
+        \item Engineer \texttt{Acres} (converted from square feet) and \texttt{VDL Sale Price}.
+        \item Sort by \texttt{saledate} and output a refined dataset (\texttt{Mod\_MeckArcGISSales\_Sorted.csv}).
+    \end{itemize}
+
+    \item \textbf{Address Enrichment (\texttt{1\_findFinishedHomeValue.py}):}
+    \begin{itemize}
+        \item Link parcel IDs to unique addresses using the ArcGIS REST API.
+        \item Add a new \texttt{Addresses} column and log processed IDs to avoid redundant API calls.
+    \end{itemize}
+
+    \item \textbf{Ratio Calculation (\texttt{2\_findHomeToLotRatio.py}):}
+    \begin{itemize}
+        \item Normalize \texttt{Finished Home Value} by transaction count.
+        \item Compute \texttt{House to Lot Ratio} (\(\texttt{House Value} / \texttt{VDL Sale Price}\)), storing results in \texttt{TransferID\_with\_Ratio.csv}.
+    \end{itemize}
+
+    \item \textbf{Geospatial Enrichment (\texttt{3\_queryRecordAddress.py}):}
+    \begin{itemize}
+        \item Add geocoded \texttt{Latitude} and \texttt{Longitude} using the ArcGIS REST and Google Geocoding APIs.
+    \end{itemize}
+
+    \item \textbf{Feature Augmentation (\texttt{4\_addFeatures.py}):}
+    \begin{itemize}
+        \item Merge datasets on \texttt{parcelid} and \texttt{transferid}.
+        \item Filter land use categories (\texttt{landuseful}) using a predefined dictionary and remove infrequent grantee records.
+    \end{itemize}
+
+    \item \textbf{Grantee Standardization (\texttt{4.12\_sortStandardizedGranteeMap.py} and \texttt{4.23\_addStandardizedGranteeNames.py}):}
+    \begin{itemize}
+        \item Standardize and map \texttt{Original\_Grantee} to \texttt{Mapped\_Grantee} for consistency across records.
+    \end{itemize}
+
+    \item \textbf{Final Transformation (\texttt{4.24\_transformData.py}):}
+    \begin{itemize}
+        \item Handle missing values in critical fields (e.g., \texttt{Acres}, \texttt{VDL Sale Price}).
+        \item Apply IQR-based outlier removal for \texttt{House to Lot Ratio} and other key features.
+        \item Convert \texttt{saledate} to \texttt{YYYY-MM} format for temporal analysis.
+    \end{itemize}
+
+    \item \textbf{IQR Grid Search (\texttt{4.25\_findBestIQRGrid.py}):}
+    \begin{itemize}
+        \item Explore optimal IQR thresholds for outlier removal.
+        \item Train \texttt{XGBRegressor} models with various configurations and evaluate \texttt{R\textsuperscript{2}} and MSE.
+    \end{itemize}
+
+    \item \textbf{Baseline Model (\texttt{2\_regressionModel.py}):}
+    \begin{itemize}
+        \item Train a linear regression model on features like \texttt{Acres}, \texttt{VDL Sale Price}, and \texttt{sale\_year}.
+        \item Evaluate with scatter plots of predicted vs. actual values.
+    \end{itemize}
+
+    \item \textbf{Regularized Models (\texttt{2.1\_regressionModel\_regularization.py}):}
+    \begin{itemize}
+        \item Apply Ridge (\(\ell_2\)) and Lasso (\(\ell_1\)) regression, leveraging \texttt{StandardScaler} for feature scaling.
+    \end{itemize}
+
+    \item \textbf{Non-Linear Models (\texttt{2.2\_regressionModel\_randomForest.py}):}
+    \begin{itemize}
+        \item Use Random Forest regression with 100 estimators and a maximum depth of 10.
+        \item Output feature importance metrics.
+    \end{itemize}
+
+    \item \textbf{XGBoost Regression (\texttt{2.3\_regressionModel\_xgboost.py}):}
+    \begin{itemize}
+        \item Train an XGBoost model with parameters (\texttt{n\_estimators}=100, \texttt{max\_depth}=6, \texttt{learning\_rate}=0.1).
+        \item Evaluate predictions using scatter plots and MSE.
+    \end{itemize}
+
+    \item \textbf{Hyperparameter Tuning (\texttt{2.31\_regressionModel\_xgboost\_hypTuning.py}):}
+    \begin{itemize}
+        \item Optimize XGBoost parameters via grid search with 5-fold cross-validation, focusing on \(\ell_1\) and \(\ell_2\) regularization.
+    \end{itemize}
+
+    \item \textbf{Feature Refinements:}
+    \begin{itemize}
+        \item Add \texttt{landuseful} as a categorical feature (\texttt{3\_regressionModel\_newFeatures\_xgboost\_hypTuning.py}).
+        \item Introduce regularization parameters (\texttt{reg\_alpha}, \texttt{reg\_lambda}) for XGBoost (\texttt{3.1\_regressionModel\_xgboost\_addRegHypTuning.py}).
+        \item Remove irrelevant features (\texttt{3.2\_regressionModel\_xgboost\_hyptuning\_dropFeatures.py}).
+    \end{itemize}
+
+    \item \textbf{Land Use Simplification (\texttt{3.4\_regressionModel\_xgboost\_landuse3categories.py}):}
+    \begin{itemize}
+        \item Map \texttt{landuseful} to broader categories (\texttt{single family}, \texttt{townhomes}, \texttt{multifamily}).
+    \end{itemize}
+
+    \item \textbf{Grantee Feature Integration (\texttt{4\_regressionModel\_xgboost\_mappedGrantees.py}):}
+    \begin{itemize}
+        \item Add standardized \texttt{Mapped\_Grantee} as a feature and apply one-hot encoding.
+        \item Optimize parameters with grid search and assess predictive performance.
+    \end{itemize}
+\end{itemize}

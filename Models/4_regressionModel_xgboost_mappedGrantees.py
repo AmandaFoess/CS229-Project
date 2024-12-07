@@ -23,6 +23,12 @@ features = ['Acres', 'VDL Sale Price', 'Latitude', 'Longitude', 'saledate_numeri
 X = df[features]
 y = df['House to Lot Ratio']
 
+# Print feature names and target label
+print("Features used in the model:")
+print(X.columns.tolist())
+print("\nTarget label:")
+print(y.name)
+
 # Preprocess the data
 numeric_features = ['Acres', 'VDL Sale Price', 'Latitude', 'Longitude', 'saledate_numeric']
 categorical_features = ['landuseful', 'Mapped_Grantee']
@@ -43,14 +49,32 @@ model = Pipeline(steps=[
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Define the parameter grid for hyperparameter tuning
-param_grid = {
+""" param_grid = {
     'regressor__n_estimators': [100, 300, 500],
     'regressor__max_depth': [8],
     'regressor__learning_rate': [0.1],
     'regressor__subsample': [1.0],
     'regressor__colsample_bytree': [0.6],
     'regressor__reg_alpha': [0, 0.05, 0.1, 0.15, 0.2],  # L1 regularization
-    'regressor__reg_lambda': [0.4, 0.5, 0.6]  # L2 regularization
+    'regressor__reg_lambda': [0, 0.2, 0.4, 0.6, 0.8]  # L2 regularization
+} """
+""" param_grid = {
+    'regressor__n_estimators': [100, 300, 500, 700, 1000],
+    'regressor__max_depth': [4, 6, 8, 10, 12],  # Experiment with both shallow and deep trees
+    'regressor__learning_rate': [0.01, 0.05, 0.1, 0.2],  # Test slower (e.g., 0.01) and faster learning rates
+    'regressor__subsample': [0.6, 0.8, 1.0],  # Investigate the effect of subsampling on performance
+    'regressor__colsample_bytree': [0.4, 0.6, 0.8, 1.0],  # Test more/less aggressive feature sampling
+    'regressor__reg_alpha': [0, 0.05, 0.1, 0.15, 0.2, 0.5],  # Add higher regularization values for L1
+    'regressor__reg_lambda': [0, 0.2, 0.4, 0.6, 0.8, 1.0]  # Add stronger regularization values for L2
+} """
+param_grid = {
+    'regressor__n_estimators': [300, 500, 700],
+    'regressor__max_depth': [6, 8, 10],  # Experiment with both shallow and deep trees
+    'regressor__learning_rate': [0.1],  # Test slower (e.g., 0.01) and faster learning rates
+    'regressor__subsample': [1.0],  # Investigate the effect of subsampling on performance
+    'regressor__colsample_bytree': [0.4, 0.6, 0.8],  # Test more/less aggressive feature sampling
+    'regressor__reg_alpha': [0, 0.05, 0.1, 0.15, 0.2, 0.5],  # Add higher regularization values for L1
+    'regressor__reg_lambda': [0, 0.2, 0.4, 0.6, 0.8, 1.0]  # Add stronger regularization values for L2
 }
 
 # Perform grid search

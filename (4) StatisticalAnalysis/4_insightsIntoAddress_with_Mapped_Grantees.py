@@ -6,6 +6,12 @@ import seaborn as sns
 # Load the dataset
 df = pd.read_csv('(3) TransformedData/Addresses_with_Mapped_Grantees_Cleaned.csv')
 
+# Drop the 'VDL Sale Price' column from the DataFrame
+if 'VDL Sale Price' in df.columns:
+    df.drop('VDL Sale Price', axis=1, inplace=True)
+    print("Column 'VDL Sale Price' has been dropped.")
+
+
 # Handle outliers for the target feature (House to Lot Ratio)
 def remove_outliers_using_iqr(df, column):
     """Removes outliers in the top and bottom 5% based on IQR."""

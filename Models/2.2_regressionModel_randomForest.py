@@ -10,10 +10,10 @@ from sklearn.compose import ColumnTransformer
 import os
 
 # Load the dataset
-df = pd.read_csv('(3) TransformedData/Addresses_with_Ratio.csv')
+df = pd.read_csv('(3) TransformedData/Addresses_with_Mapped_Grantees_Cleaned.csv')
 
 # Handle missing values
-df.dropna(subset=['Acres', 'VDL Sale Price', 'Finished Home Value', 'Latitude', 'Longitude'], inplace=True)
+df.dropna(subset=['Acres', 'VDL Sale Price', 'Adjusted Finished Home Value', 'Latitude', 'Longitude'], inplace=True)
 
 # Outlier removal using IQR
 def remove_outliers(df, column, quantile_range):
@@ -35,12 +35,12 @@ df['saledate'] = pd.to_datetime(df['saledate'])
 df['sale_year'] = df['saledate'].dt.year
 
 # Define features and target variable
-features = ['Acres', 'VDL Sale Price', 'Finished Home Value', 'Latitude', 'Longitude', 'sale_year']
+features = ['Acres', 'Adjusted Finished Home Value', 'Latitude', 'Longitude', 'sale_year']
 X = df[features]
 y = df['House to Lot Ratio']
 
 # Preprocess numeric features
-numeric_features = ['Acres', 'VDL Sale Price', 'Finished Home Value', 'Latitude', 'Longitude', 'sale_year']
+numeric_features = ['Acres', 'Adjusted Finished Home Value', 'Latitude', 'Longitude', 'sale_year']
 preprocessor = ColumnTransformer(
     transformers=[
         ('num', StandardScaler(), numeric_features)

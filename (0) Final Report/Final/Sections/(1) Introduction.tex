@@ -1,0 +1,55 @@
+\section{Introduction}
+
+The finished home price to land value ratio is a fundamental metric in land development,
+representing how much of a house's total value comes from the land itself. This ratio
+plays a pivotal role in evaluating the financial viability of real estate projects,
+particularly in mass production housing. By analyzing and tracking this ratio across
+various submarkets, developers can make more precise financial decisions
+regarding raw land acquisition and project planning, aligning development strategies
+with market conditions.
+
+\[
+	\text{Ratio}= \frac{ \text{Market retail sale price of a new finished home} }{
+	\text{Vacant developed lot price the builder pays the developer} }
+\]
+
+This ratio is determined by two main components: (1) the market value of the finished
+property, influenced by factors such as location, size, and sales of comparable
+properties, and (2) the price of a vacant developed lot (VDL) that builders are willing
+to pay, which is calculated using the residual land valuation method. A well-balanced
+ratio signals that development costs align with the land’s worth, suggesting a
+potentially profitable project. On the other hand, a skewed ratio could mean the
+project is burdened with high costs or that the land’s value is underestimated, prompting
+the need for further financial evaluation. For developers, understanding this ratio
+across the broader market, submarkets, and individual builder preferences allows
+for accurate lot pricing, ensuring builders can achieve their desired internal
+profit margins.
+
+Estimating this ratio accurately is no small task, as it requires navigating a range
+of challenges. Real estate markets are inherently dynamic, influenced by fluctuating
+economic conditions, interest rates, and local developments. Market-specific
+factors, such as neighborhood appeal, proximity to amenities, and future development
+potential, also significantly impact the ratio but are difficult to quantify
+precisely. In addition, zoning regulations, land-use policies, and environmental
+rules introduce further complexity. Traditional valuation methods, while
+valuable, often rely on detailed financial forecasts and assumptions that can introduce
+uncertainty.
+
+This study applies a machine learning approach, using XGBoost, to predict the finished
+home price to land value ratio at the early stages of a project. This proactive
+approach shifts the focus from traditional reactive calculations—performed after
+significant project data has been finalized—to early-stage predictions that
+empower stakeholders to make informed decisions right from the outset.
+
+The model integrates diverse data sources, including numeric inputs such as acreage,
+estimated Vacant Developed Lot (VDL) sale prices, and geospatial details (latitude,
+longitude, and sale date), as well as categorical features like land usage and
+grantee mappings. By leveraging these inputs, the model uncovers complex
+patterns and relationships that influence the predicted finished lot price to
+land value ratio.
+
+This research contributes to the development of more efficient land valuation
+practices, aiding in the supply of affordable housing and addressing housing shortages
+in high-demand areas. By improving the accuracy of this critical ratio and
+adapting it to localized submarket conditions, the study offers a powerful tool for
+strategic decision-making in land development.

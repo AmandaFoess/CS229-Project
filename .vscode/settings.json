@@ -1,0 +1,11 @@
+{
+  "editor.formatOnSave": false,
+  "latex-workshop.formatting.latex": "none",
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "prettier.prettierPath": "/Users/amandafoess/miniconda3/envs/latex-notes/node_modules/prettier",
+  "prettier.configPath": "/Users/amandafoess/miniconda3/envs/latex-notes/.prettierrc",
+  "[latex]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
